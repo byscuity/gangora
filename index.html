@@ -1,377 +1,243 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Hexágono Giratório na Gangorra Branca</title>
+    <title>Hexágono Giratório Sobre Linha Gangorra</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             user-select: none;
+            /* Sem sombras, sem brilhos, sem efeitos extras */
         }
 
         body {
-            background: radial-gradient(circle at center, #0a0f1e 0%, #03060c 100%);
+            background: black;
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-family: 'Segoe UI', 'Courier New', monospace;
-        }
-
-        .container {
-            background: rgba(0,0,0,0.25);
-            border-radius: 2rem;
-            padding: 1rem;
-            box-shadow: 0 20px 35px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+            margin: 0;
+            padding: 20px;
         }
 
         canvas {
             display: block;
             margin: 0 auto;
-            border-radius: 28px;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.05), 0 15px 35px rgba(0,0,0,0.5);
-            cursor: crosshair;
-        }
-
-        .info {
-            text-align: center;
-            margin-top: 1.2rem;
-            color: #ccccee;
-            font-size: 0.85rem;
-            letter-spacing: 1px;
-            font-weight: 400;
-            background: rgba(10,20,30,0.6);
-            display: inline-block;
-            width: auto;
-            padding: 0.4rem 1.2rem;
-            border-radius: 40px;
-            backdrop-filter: blur(4px);
-            font-family: monospace;
-        }
-
-        .info span {
-            color: white;
-            font-weight: bold;
-            text-shadow: 0 0 5px cyan;
+            box-shadow: none;
+            border: none;
+            outline: none;
+            /* Garantia: sem brilho, sem sombra */
         }
     </style>
 </head>
 <body>
-<div style="display: flex; flex-direction: column; align-items: center;">
-    <div class="container">
-        <canvas id="gangorraCanvas" width="900" height="500" style="width: 900px; height: 500px;"></canvas>
-    </div>
-    <div class="info">
-        ⚡ GANGORRA OSCILANTE | HEXÁGONO BRANCO GIRA + PERCORRE A LINHA ⚡
-    </div>
-</div>
+    <canvas id="canvas"></canvas>
 
-<script>
-    (function() {
-        // ----- CONFIGURAÇÕES PRINCIPAIS -----
-        const canvas = document.getElementById('gangorraCanvas');
-        const ctx = canvas.getContext('2d');
+    <script>
+        (function() {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
 
-        // Dimensões reais (px)
-        const W = 900;
-        const H = 500;
-        canvas.width = W;
-        canvas.height = H;
-
-        // Parâmetros da "linha reta" que age como gangorra (ângulo variável)
-        // A linha será um segmento de reta branco, com centro fixo no canvas (ponto médio da tela)
-        // Ela vai oscilar como uma gangorra: seu ângulo theta varia senoidalmente entre -ANG_MAX e +ANG_MAX.
-        const ANG_MAX = 0.38;      // ~21.7 graus, balanço suave porém perceptível
-        const OSC_SPEED = 1.45;    // velocidade da gangorra (rad/s) -> ciclo ~4.3s
-
-        // Comprimento da linha (reta branca) - ocupa boa parte da largura, deixando margens
-        const LINE_LEN = 680;       // pixels (comprimento total do segmento)
-        // Centro da gangorra (ponto de pivô) - fixo no meio do canvas
-        const pivotX = W / 2;       // 450
-        const pivotY = H / 2;       // 250
-
-        // ---- HEXÁGONO ----
-        // Raio do hexágono (tamanho)
-        const HEX_RADIUS = 22;       // tamanho agradável, não cobre toda linha
-        // O hexágono se desloca ao longo da linha (de uma extremidade à outra)
-        // Vamos controlar um parâmetro t (0 a 1), onde t=0 é extremidade esquerda (ou "ponta inicial") e t=1 extremidade direita
-        // Como a linha está rotacionada dinamicamente, precisamos calcular as coordenadas globais.
-        
-        // Velocidade de movimento do hexágono ao longo da linha (varredura contínua)
-        // Ele vai e volta de uma ponta à outra (ping-pong)
-        let hexProgress = 0.0;         // 0 .. 1, direção positiva inicial
-        let hexDirection = 0.0082;      // incremento por frame (ajuste fino com delta time)
-        // Velocidade angular da rotação do hexágono (radianos por segundo)
-        const HEX_ROT_SPEED = 2.8;      // rotação rápida e contínua (rad/s)
-        let currentHexRotation = 0.0;
-
-        // Variável de tempo para animação contínua (baseada em requestAnimationFrame)
-        let lastTimestamp = 0;
-        let angleRad = 0.0;     // ângulo atual da gangorra (linha), em radianos
-
-        // ---- PRÉ-CÁLCULO DOS VÉRTICES DO HEXÁGONO BASE (sem rotação extra)----
-        // Hexágono regular centrado na origem (0,0), com raio HEX_RADIUS
-        function getHexagonVertices(radius) {
-            const verts = [];
-            for (let i = 0; i < 6; i++) {
-                // ângulo do vértice: 0° aponta para direita (eixo X positivo)
-                // hexágono começa com vértice à direita para um visual simétrico
-                const angle = (i * Math.PI * 2 / 6);
-                const x = radius * Math.cos(angle);
-                const y = radius * Math.sin(angle);
-                verts.push({x, y});
+            // Dimensões responsivas mas com proporção fixa para manter a linha visível
+            function setCanvasSize() {
+                const containerWidth = window.innerWidth;
+                const containerHeight = window.innerHeight;
+                // Tamanho base: 800x400, mas adapta para telas menores mantendo proporção
+                let width = Math.min(containerWidth - 40, 900);
+                let height = Math.min(containerHeight - 40, 450);
+                // Proporção largura/altura aproximadamente 2:1 para a linha ter espaço horizontal
+                if (width / height > 2.2) {
+                    width = height * 2.2;
+                } else if (height / width > 0.6) {
+                    height = width * 0.55;
+                }
+                canvas.width = width;
+                canvas.height = height;
             }
-            return verts;
-        }
-        
-        const baseHexVerts = getHexagonVertices(HEX_RADIUS);
-        
-        // Função para desenhar o hexágono em uma posição (cx, cy) com rotação extra (radianos)
-        function drawHexagon(ctx, cx, cy, rotation, lineColor = '#FFFFFF', fillStyle = 'rgba(255,255,255,0.92)') {
-            // Aplica rotação ao redor do centro (cx, cy)
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(rotation);
-            ctx.beginPath();
-            // desenha o polígono a partir dos vértices base
-            const first = baseHexVerts[0];
-            ctx.moveTo(first.x, first.y);
-            for (let i = 1; i < baseHexVerts.length; i++) {
-                ctx.lineTo(baseHexVerts[i].x, baseHexVerts[i].y);
-            }
-            ctx.closePath();
+            setCanvasSize();
+            window.addEventListener('resize', () => {
+                setCanvasSize();
+            });
+
+            // ---------- Parâmetros da linha "gangorra" (onda suave senoidal) ----------
+            // A linha será uma curva suave parecendo uma gangorra: dois pontos fixos nas extremidades,
+            // mas com um deslocamento vertical senoidal no meio, simulando movimento.
+            // Em vez de uma linha reta rígida, usamos uma curva bezier quadrática ou cúbica,
+            // com o ponto de controle oscilando para cima/baixo como uma gangorra.
+            // Isso mantém a linha branca e sem adicionar objetos extras.
             
-            // Estilo: Hexágono branco com leve brilho e traço sutil pra destacar giro
-            ctx.fillStyle = fillStyle;
-            ctx.fill();
-            ctx.strokeStyle = lineColor;
-            ctx.lineWidth = 2.2;
-            ctx.shadowBlur = 8;
-            ctx.shadowColor = "rgba(255,255,200,0.8)";
-            ctx.stroke();
-            // reset sombra para outros elementos não pegarem
-            ctx.shadowBlur = 0;
-            ctx.restore();
-        }
-        
-        // ---- FUNÇÃO QUE DESENHA TUDO ----
-        function drawScene(nowSeconds) {
-            if (!ctx) return;
-            ctx.clearRect(0, 0, W, H);
+            // Definição dos pontos fixos (x, y) relativos ao canvas
+            let leftPoint = { x: 40, y: 0 };    // y será ajustado dinamicamente
+            let rightPoint = { x: 0, y: 0 };
             
-            // 1. Calcular ângulo da gangorra (OSCILANTE) usando seno contínuo no tempo
-            //    ângulo = ANG_MAX * sin(OSC_SPEED * t)
-            const angle = ANG_MAX * Math.sin(OSC_SPEED * nowSeconds);
-            angleRad = angle;  // guardar para uso futuro (embora calcule direto)
+            // Ponto de controle para a curva (gangorra): sobe e desce como uma gangorra.
+            let controlYOffset = 0;
+            let time = 0;
+            const GANGORRA_SPEED = 1.8; // velocidade da gangorra (ondulação)
             
-            // 2. Definir as duas extremidades da linha (em coordenadas locais sem rotação)
-            //    Vamos considerar a linha centrada no pivô (pivotX, pivotY), com direção inicial HORIZONTAL
-            //    Meia extensão = LINE_LEN / 2
-            const halfLen = LINE_LEN / 2;
-            // Pontas local (sem rotação): esquerda (-halfLen, 0) e direita (+halfLen, 0) relativas ao pivô
-            const localLeft = { x: -halfLen, y: 0 };
-            const localRight = { x: halfLen, y: 0 };
+            // Parâmetros do hexágono
+            let hexX = 0;        // posição ao longo da linha (0 = extremidade esquerda, 1 = direita)
+            let hexDirection = 1; // 1 = indo para direita, -1 = esquerda
+            const HEX_SPEED = 0.0035; // velocidade de movimento (por frame, relativo à largura total)
+            let hexAngle = 0;     // ângulo de rotação do hexágono (radianos)
+            const HEX_ROTATION_SPEED = 0.025; // rotação constante
             
-            // Aplica rotação angle (ângulo da gangorra) aos pontos
-            function rotatePoint(px, py, ang) {
-                const cos = Math.cos(ang);
-                const sin = Math.sin(ang);
-                return {
-                    x: px * cos - py * sin,
-                    y: px * sin + py * cos
-                };
+            // Raio do hexágono (tamanho)
+            let hexRadius = 22;
+            
+            // Função que atualiza a geometria da linha dependendo do tamanho do canvas
+            function updateGeometry() {
+                const marginX = Math.min(45, canvas.width * 0.07);
+                const bottomMargin = canvas.height * 0.2;
+                const topBaseY = canvas.height * 0.65;  // altura base da linha (ponto médio)
+                leftPoint.x = marginX;
+                rightPoint.x = canvas.width - marginX;
+                // Os pontos fixos das extremidades terão a mesma altura base para a linha plana,
+                // mas a gangorra será aplicada através do ponto de controle.
+                leftPoint.y = topBaseY;
+                rightPoint.y = topBaseY;
+                // Ajustar raio do hexágono proporcional
+                hexRadius = Math.min(24, canvas.width * 0.045, canvas.height * 0.1);
+                hexRadius = Math.max(14, hexRadius);
             }
             
-            const rotatedLeft = rotatePoint(localLeft.x, localLeft.y, angle);
-            const rotatedRight = rotatePoint(localRight.x, localRight.y, angle);
-            
-            // Coordenadas globais das pontas
-            const leftTip = { x: pivotX + rotatedLeft.x, y: pivotY + rotatedLeft.y };
-            const rightTip = { x: pivotX + rotatedRight.x, y: pivotY + rotatedRight.y };
-            
-            // 3. DESENHAR A LINHA BRANCA (gangorra) - estilo luminescente e reta
-            ctx.beginPath();
-            ctx.moveTo(leftTip.x, leftTip.y);
-            ctx.lineTo(rightTip.x, rightTip.y);
-            ctx.strokeStyle = "#FFFFFF";
-            ctx.lineWidth = 4.5;
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = "white";
-            ctx.stroke();
-            // adicional: um brilho extra mais suave pra dar destaque
-            ctx.beginPath();
-            ctx.moveTo(leftTip.x, leftTip.y);
-            ctx.lineTo(rightTip.x, rightTip.y);
-            ctx.strokeStyle = "#f0f0ff";
-            ctx.lineWidth = 2.0;
-            ctx.shadowBlur = 6;
-            ctx.stroke();
-            
-            // Desenhar também "apoios" ou pequenos detalhes (opcional) - um círculo no pivô
-            ctx.beginPath();
-            ctx.arc(pivotX, pivotY, 6, 0, Math.PI*2);
-            ctx.fillStyle = "#ffffffcc";
-            ctx.shadowBlur = 8;
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(pivotX, pivotY, 3, 0, Math.PI*2);
-            ctx.fillStyle = "#aaf0ff";
-            ctx.fill();
-            
-            // reset shadow para o hexágono ser controlado separadamente (evita overshaddow)
-            ctx.shadowBlur = 0;
-            
-            // 4. MOVIMENTO DO HEXÁGONO DE PONTA A PONTA (sobre a linha)
-            //    Atualizar progresso usando delta time, mas por simplicidade e suavidade,
-            //    usaremos incremento baseado em tempo na função animate usando delta seconds.
-            //    O método de animação principal ajustará hexProgress corretamente.
-            //    Contudo, aqui apenas tomamos o valor atual de hexProgress (já atualizado no loop)
-            //    e calculamos a posição do hexágono ao longo da linha.
-            
-            // Interpolação linear entre leftTip e rightTip conforme hexProgress (0->esquerda, 1->direita)
-            const hexX = leftTip.x + (rightTip.x - leftTip.x) * hexProgress;
-            const hexY = leftTip.y + (rightTip.y - leftTip.y) * hexProgress;
-            
-            // Incrementar rotação do hexágono independente (acumulada)
-            // A rotação total será atualizada baseada em delta time, mas exibimos com currentHexRotation.
-            
-            // Desenhar o hexágono com rotação atual (currentHexRotation)
-            // Adicionamos um pequeno efeito de glow no hexágono e cor branca vibrante
-            ctx.save();
-            // glow personalizado apenas para o hexágono
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = "#ffffffdd";
-            drawHexagon(ctx, hexX, hexY, currentHexRotation, "#FFFFFF", "#FFFFFF");
-            // faz um segundo contorno mais intenso (overlay) para destacar giro
-            ctx.shadowBlur = 0;
-            // adicional: por fim desenhamos um fino contorno extra só pra realce
-            ctx.save();
-            ctx.translate(hexX, hexY);
-            ctx.rotate(currentHexRotation);
-            ctx.beginPath();
-            const firstVert = baseHexVerts[0];
-            ctx.moveTo(firstVert.x, firstVert.y);
-            for (let i=1;i<baseHexVerts.length;i++) ctx.lineTo(baseHexVerts[i].x, baseHexVerts[i].y);
-            ctx.closePath();
-            ctx.strokeStyle = "rgba(255,255,255,0.95)";
-            ctx.lineWidth = 1.8;
-            ctx.stroke();
-            ctx.restore();
-            
-            ctx.restore();
-            
-            // Opcional: efeito de partículas nos extremos (pequenos pontos luminosos)
-            ctx.beginPath();
-            ctx.arc(leftTip.x, leftTip.y, 5, 0, 2*Math.PI);
-            ctx.fillStyle = "#fffaee";
-            ctx.shadowBlur = 6;
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(rightTip.x, rightTip.y, 5, 0, 2*Math.PI);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            
-            // pequenos detalhes de "gangorra" (traço de apoio decorativo)
-            ctx.beginPath();
-            ctx.moveTo(pivotX - 12, pivotY + 12);
-            ctx.lineTo(pivotX + 12, pivotY + 12);
-            ctx.lineWidth = 2.5;
-            ctx.strokeStyle = "#aaaaff";
-            ctx.stroke();
-        }
-        
-        // ----- CONTROLE DE TEMPO & ATUALIZAÇÃO DE FÍSICA (movimento do hexágono + rotação)-----
-        let previousTime = null;
-        
-        function updateHexagonMotion(deltaSec) {
-            if (deltaSec <= 0 || deltaSec > 0.1) deltaSec = 0.016;  // segurança
-            
-            // Velocidade base do movimento ao longo da linha: percorrer de uma ponta a outra em aproximadamente 3.6 segundos (ida e volta).
-            // Definimos velocidade em progresso por segundo: 0.55 significa ~1,8s para ir de 0 a 1? Vamos ajustar para um movimento fluido.
-            // Valor speedPerSecond = 0.68 faz com que ida completa demore ~1.47s e vai e volta ~2.94s, legal combo com gangorra.
-            // Para variar mais suave, deixar 0.54 => ciclo completo ida+volta ~3.7s.
-            const SPEED_PROGRESS = 0.58;   // unidades de progresso por segundo (0->1 em ~1.724s)
-            
-            // Atualiza progresso com base na direção
-            let newProgress = hexProgress + (hexDirection * deltaSec * SPEED_PROGRESS);
-            
-            // Checagem de bordas (inverter direção)
-            if (newProgress >= 1.0) {
-                newProgress = 1.0 - (newProgress - 1.0);
-                hexDirection = -Math.abs(hexDirection);  // inverte para esquerda
-                // correção de overshoot: garantir que não fique colado
-                if (newProgress > 1.0) newProgress = 0.99;
-                if (newProgress < 0.0) newProgress = 0.0;
-            } else if (newProgress <= 0.0) {
-                newProgress = -newProgress;
-                hexDirection = Math.abs(hexDirection);
-                if (newProgress < 0.0) newProgress = 0.01;
-                if (newProgress > 1.0) newProgress = 0.99;
+            // Função que retorna a coordenada Y da linha curva (gangorra) em um dado X
+            // Usamos uma interpolação de curva quadrática: ponto de controle (midX, controlY)
+            // Isso cria um arco suave que lembra o movimento de gangorra.
+            // O ponto de controle oscila para cima e para baixo no centro.
+            function getLineY(x, controlY) {
+                // x entre leftPoint.x e rightPoint.x
+                const t = (x - leftPoint.x) / (rightPoint.x - leftPoint.x);
+                if (t < 0) return leftPoint.y;
+                if (t > 1) return rightPoint.y;
+                // Curva quadrática: B(t) = (1-t)^2 * P0 + 2(1-t)t * P1 + t^2 * P2
+                const P0x = leftPoint.x, P0y = leftPoint.y;
+                const P2x = rightPoint.x, P2y = rightPoint.y;
+                const P1x = leftPoint.x + (rightPoint.x - leftPoint.x) * 0.5;
+                const P1y = controlY;
+                
+                // interpolação para Y
+                const y = (1-t)*(1-t)*P0y + 2*(1-t)*t*P1y + t*t*P2y;
+                return y;
             }
             
-            hexProgress = Math.min(0.9999, Math.max(0.0001, newProgress));
-            // pequena verificação para evitar travamento nos extremos
-            if (hexProgress <= 0.001 && hexDirection < 0) hexDirection = Math.abs(hexDirection);
-            if (hexProgress >= 0.999 && hexDirection > 0) hexDirection = -Math.abs(hexDirection);
+            // Obtém o ponto exato (x,y) sobre a curva gangorra para um dado parâmetro t (0=esquerda, 1=direita)
+            function getPointOnLine(t, controlY) {
+                const x = leftPoint.x + t * (rightPoint.x - leftPoint.x);
+                const y = getLineY(x, controlY);
+                return { x, y };
+            }
             
-            // Atualiza rotação do hexágono: constante girando (radianos por segundo)
-            currentHexRotation += HEX_ROT_SPEED * deltaSec;
-            // manter ângulo dentro de 2PI para evitar overflow (opcional)
-            if (currentHexRotation > Math.PI * 2) currentHexRotation -= Math.PI * 2;
-            if (currentHexRotation < 0) currentHexRotation += Math.PI * 2;
-        }
-        
-        // Animação principal usando requestAnimationFrame (time-based)
-        let animationId = null;
-        
-        function animate(timestamp) {
-            if (!previousTime) {
-                previousTime = timestamp;
+            // Desenha o hexágono branco puro, rotacionado, sem bordas extras, sem brilho.
+            function drawHexagon(x, y, radius, angle) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const theta = i * Math.PI * 2 / 6;
+                    const px = radius * Math.cos(theta);
+                    const py = radius * Math.sin(theta);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                // Nenhum traço de borda adicional, sem gradiente, sem brilho
+                ctx.restore();
+            }
+            
+            // Desenha a linha branca reta com movimento de gangorra: usa curva suave entre os pontos.
+            // Para garantir que parece uma linha "reta" mas ondulando como gangorra, usamos uma curva quadrática
+            // com apenas um pico suave. A linha é branca, sólida, sem pontos extras.
+            function drawGangorraLine(controlY) {
+                ctx.beginPath();
+                // move para ponto esquerdo
+                ctx.moveTo(leftPoint.x, leftPoint.y);
+                // desenha uma curva quadrática até o ponto direito, com controle no meio
+                const midX = leftPoint.x + (rightPoint.x - leftPoint.x) * 0.5;
+                ctx.quadraticCurveTo(midX, controlY, rightPoint.x, rightPoint.y);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3.5;
+                ctx.stroke();
+                // Sem nenhum outro elemento, sem bolinhas, sem retas adicionais.
+            }
+            
+            // Função que atualiza a animação e desenha tudo
+            function animate() {
+                // Atualizar geometria em caso de redimensionamento já tratado, mas também durante animação
+                // para segurança se redimensionou em outro momento.
+                // Aqui nós garantimos que geometria está de acordo com o canvas atual.
+                updateGeometry();
+                
+                // Atualiza o tempo da gangorra
+                time += GANGORRA_SPEED * 0.016; // ajuste suave independente do frame (aproximado)
+                // Efeito gangorra: o controlY oscila para cima e para baixo em relação à linha reta base.
+                // A base dos pontos extremos está em leftPoint.y e rightPoint.y (mesmo Y)
+                // O ponto de controle oscila entre -35 e +35 pixels de deslocamento vertical em relação à linha reta imaginária.
+                const maxOffset = Math.min(38, canvas.height * 0.12);
+                const offsetY = Math.sin(time) * maxOffset;
+                // o controlY é a altura do ponto médio do controle
+                const baseMidY = (leftPoint.y + rightPoint.y) / 2;
+                let controlY = baseMidY + offsetY;
+                // limitar para não sair muito da tela
+                controlY = Math.min(canvas.height - 15, Math.max(15, controlY));
+                
+                // Atualiza movimento do hexágono de uma ponta a outra da linha
+                hexX += HEX_SPEED * hexDirection;
+                if (hexX >= 1.0) {
+                    hexX = 1.0;
+                    hexDirection = -1;
+                } else if (hexX <= 0.0) {
+                    hexX = 0.0;
+                    hexDirection = 1;
+                }
+                
+                // Atualiza rotação do hexágono (gira continuamente)
+                hexAngle += HEX_ROTATION_SPEED;
+                // normaliza ângulo não necessário mas mantém
+                if (hexAngle > Math.PI * 2) hexAngle -= Math.PI * 2;
+                
+                // Obtém a posição exata do hexágono sobre a linha curva atual (gangorra)
+                const hexPos = getPointOnLine(hexX, controlY);
+                
+                // Desenha tudo
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Desenha a linha branca com movimento de gangorra
+                drawGangorraLine(controlY);
+                
+                // Desenha o hexágono branco girando sobre a linha (sem bordas, sem sombra, apenas preenchido)
+                drawHexagon(hexPos.x, hexPos.y, hexRadius, hexAngle);
+                
+                // Nada mais: sem bolinhas, sem retas adicionais, sem brilho, sem luz, sem sombra.
                 requestAnimationFrame(animate);
-                return;
             }
             
-            // delta em segundos (limitado para evitar saltos)
-            let delta = Math.min(0.033, (timestamp - previousTime) / 1000);
-            if (delta <= 0) {
-                previousTime = timestamp;
-                requestAnimationFrame(animate);
-                return;
-            }
+            // Para garantir que tudo funcione com redimensionamento sem sobrescrever dimensões desagradáveis
+            window.addEventListener('resize', () => {
+                setCanvasSize();
+                updateGeometry();
+                // Reseta pequenos valores para evitar posições fora do limite, mas mantém movimento contínuo
+                // Não interferir na direção do hexágono para não quebrar continuidade.
+                if (hexX > 1) hexX = 1;
+                if (hexX < 0) hexX = 0;
+            });
             
-            // Atualizar movimento do hexágono (posição e rotação)
-            updateHexagonMotion(delta);
-            
-            // Tempo contínuo (segundos) para animação do ângulo da gangorra
-            const nowSeconds = timestamp / 1000;
-            
-            // Desenhar a cena completa (linha com ângulo atual, hexágono na posição calculada)
-            drawScene(nowSeconds);
-            
-            previousTime = timestamp;
-            animationId = requestAnimationFrame(animate);
-        }
-        
-        // Inicializar valores
-        function init() {
-            hexProgress = 0.0;            // começa na extremidade esquerda
-            hexDirection = 0.58;           // direção positiva (para a direita) - valor positivo => movimento para direita
-            currentHexRotation = 0.0;
-            previousTime = null;
-            // pequeno delay pra sincronia suave
-            animationId = requestAnimationFrame(animate);
-        }
-        
-        // Ajuste de redimensionamento? Mantém canvas fixo, nenhum resize problemático.
-        window.addEventListener('resize', () => {}); // dummy
-        
-        init();
-        
-        // Garantir que se a página perder foco, continue suave (não precisa parar)
-    })();
-</script>
+            // Inicializa geometria e começa animação
+            updateGeometry();
+            // Inicializa hexX no centro ou ponta? Para maior fluidez começa na ponta esquerda.
+            hexX = 0;
+            hexDirection = 1;
+            hexAngle = 0;
+            animate();
+        })();
+    </script>
 </body>
 </html>
