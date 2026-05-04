@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Hexágono Sobre a Linha - Percorre Uniformemente</title>
+    <title>Hexágono Sobre a Linha - Movimento Uniforme Sincronizado</title>
     <style>
         * {
             margin: 0;
@@ -18,166 +18,190 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            font-family: 'Segoe UI', 'Courier New', monospace;
         }
 
         canvas {
             display: block;
             margin: 0 auto;
             background: #000000;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+            border-radius: 4px;
         }
 
         .info {
             position: fixed;
-            bottom: 6px;
-            right: 6px;
-            color: #111;
-            font-size: 7px;
+            bottom: 12px;
+            right: 12px;
+            color: #2a2a2a;
+            font-size: 9px;
+            font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 8px;
+            border-radius: 12px;
+            backdrop-filter: blur(2px);
+            pointer-events: none;
+            letter-spacing: 0.3px;
+            font-weight: 500;
+        }
+        
+        .badge {
+            position: fixed;
+            bottom: 12px;
+            left: 12px;
+            color: #333;
+            font-size: 8px;
             font-family: monospace;
+            background: rgba(10,10,10,0.5);
+            padding: 3px 8px;
+            border-radius: 12px;
             pointer-events: none;
         }
     </style>
 </head>
 <body>
 <canvas id="canvas" width="1000" height="500"></canvas>
-<div class="info">◆ hexágono acima da linha | percorre toda a linha uniformemente ◆</div>
+<div class="info">⚡ HEXÁGONO | VELOCIDADE UNIFORME SOBRE A LINHA | ACIMA PERMANENTEMENTE ⚡</div>
+<div class="badge">⟁ movimento natural | sincronia angular | percurso contínuo</div>
 
 <script>
     (function() {
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
-        // Dimensões fixas
+        // DIMENSÕES FIXAS
         const W = 1000;
         const H = 500;
         canvas.width = W;
         canvas.height = H;
 
-        // Centro da linha (ponto médio fixo onde a gangorra pivoteia)
-        const centerX = W / 2;
-        const centerY = H / 2;
+        // PONTO CENTRAL DA GANGORRA (linha reta)
+        const pivotX = W / 2;
+        const pivotY = H / 2;
         
-        // Comprimento da linha reta (branca)
-        const lineLength = 480;
-        const halfLen = lineLength / 2;
+        // COMPRIMENTO TOTAL DA LINHA (branca) -> distância entre extremidades
+        const lineLength = 480;          // pixels
+        const halfLen = lineLength / 2;   // = 240
         
-        // PARÂMETROS DO MOVIMENTO DA GANGORRA (linha reta inclinando)
-        const gangSpeed = 1.85;           // velocidade angular da gangorra (rad/s)
-        const amplitudeAngle = 0.44;       // amplitude de inclinação (~25 graus)
+        // ========== PARÂMETROS DINÂMICOS DA GANGORRA (oscilação suave) ==========
+        const angularSpeed = 1.85;        // rad/s -> velocidade angular da oscilação
+        const tiltAmplitude = 0.44;       // radianos ≈ 25.2 graus (inclinação máxima)
         
-        // PARÂMETROS DO HEXÁGONO
-        const hexSize = 22;                // raio do hexágono
-        const hexSpinSpeed = 2.6;          // rotação própria (rad/s)
+        // ========== PARÂMETROS DO HEXÁGONO ==========
+        const hexRadius = 22;              // raio do hexágono (tamanho visual)
+        const hexSpinRate = 2.6;           // rotação própria contínua (rad/s)
+        const perpendicularOffset = 20;    // distância fixa ACIMA da linha (offset perpendicular)
         
-        // DISTÂNCIA ACIMA DA LINHA (perpendicular)
-        const aboveOffset = 20;             // pixels acima da linha
+        // ================================================================
+        // MOVIMENTO UNIFORME DO HEXÁGONO AO LONGO DA LINHA (VELOCIDADE CONSTANTE)
+        // ESTRATÉGIA:
+        // O hexágono percorre toda a extensão da linha de forma absolutamente uniforme,
+        // alternando entre as extremidades (ida e volta) como um carrinho sobre trilho.
+        // A velocidade escalar do hexágono em relação à linha é CONSTANTE.
+        // Para que o movimento seja compatível com a dinâmica da gangorra (sem ultrapassar
+        // ou ficar visualmente "descolado"), calculamos a velocidade com base na velocidade
+        // tangencial máxima das pontas da linha. Isso garante que o hexágono se mova
+        // numa escala temporal harmoniosa, sem ser mais rápido que a rotação da gangorra.
+        // ----------------------------------------------------------------
+        // Velocidade máxima de uma extremidade da linha (ponta): 
+        // V_tip_max = amplitude_angular * velocidade_angular * (comprimento/2)
+        // valor ≈ 0.44 * 1.85 * 240 ≈ 195.36 pixels/segundo.
+        // Essa velocidade tangencial representa o quão rápido a ponta se move no espaço.
+        // Para criar um movimento uniforme realista e estável, definimos a velocidade
+        // constante do hexágono como exatamente esse valor máximo de referência.
+        // Dessa forma, o hexágono desliza homogeneamente entre -halfLen e +halfLen,
+        // invertendo suavemente nos extremos. O período de ida e volta completa 
+        // (2 * lineLength) / hexSpeed ≈ 4.91 segundos, enquanto a gangorra completa um 
+        // ciclo completo (subida e descida) em T = 2π/1.85 ≈ 3.395s. Isso cria um ritmo
+        // visual interessante e absolutamente uniforme, sem acelerações.
         
-        // =====================================================
-        // LÓGICA PRINCIPAL:
-        // O hexágono percorre TODA a linha de forma UNIFORME,
-        // ou seja, vai de uma extremidade à outra com velocidade constante
-        // ao longo do comprimento da linha, SEMPRE ACIMA dela.
-        // A velocidade de percurso é BASEADA na velocidade da linha (gangorra)
-        // e ajustada para que não seja mais rápida nem mais devagar.
-        //
-        // IMPLEMENTAÇÃO:
-        // O movimento da linha é oscilatório (senoidal). Para que o hexágono
-        // percorra a linha uniformemente com velocidade compatível, faremos
-        // com que ele complete um ciclo completo (ida e volta) no MESMO PERÍODO
-        // que a gangorra completa um ciclo (subida e descida).
-        // Dessa forma, a velocidade média e instantânea do hexágono ao longo
-        // da linha respeita a dinâmica da gangorra.
-        //
-        // Posição do hexágono: s(t) varia linearmente com o tempo de forma
-        // triangular suave? Não, para ser contínuo e suave, usamos movimento
-        // harmônico com a mesma frequência da gangorra, mas isso não é "uniforme"
-        // (velocidade constante). O enunciado pede "percorrer toda a linha de forma
-        // uniforme com base na velocidade da linha" -> interpretação: a velocidade
-        // de deslocamento do hexágono sobre a linha (em relação à linha) deve ser
-        // constante, e o valor dessa constante deve ser tal que o hexágono
-        // acompanhe o ritmo da gangorra sem ultrapassar ou ficar para trás.
-        //
-        // Portanto: o hexágono se move ao longo da linha de uma extremidade à outra
-        // com velocidade constante v_const (pixels/s). O tempo para ir de uma ponta
-        // à outra é T_viajem = lineLength / v_const. Para estar sincronizado com a
-        // gangorra (que tem período T_gang = 2π / gangSpeed), queremos que o hexágono
-        // complete uma ida e volta (2 * lineLength) no mesmo período da gangorra?
-        // Ou que a ida simples coincida com meio período? A melhor sincronia para
-        // "velocidade necessária para não ser mais rápida ou devagar que a velocidade da linha"
-        // é fazer com que o hexágono se mova com velocidade constante percorrendo a linha
-        // de forma que quando a gangorra atinge sua inclinação máxima, o hexágono está
-        // nas extremidades; quando a gangorra está na horizontal, o hexágono está no centro.
-        // Isso é exatamente um movimento harmônico, não velocidade constante.
-        // 
-        // Porém o usuário pediu "percorrer toda a linha de forma uniforme" (velocidade constante).
-        // Vamos atender: velocidade CONSTANTE ao longo da linha, indo e voltando (ping-pong).
-        // E a velocidade será definida com base na velocidade angular máxima da linha
-        // para garantir compatibilidade. A velocidade linear constante do hexágono será
-        // igual à velocidade tangencial máxima da extremidade da linha, garantindo que
-        // o hexágono nunca ultrapasse a dinâmica da linha.
-        //
-        // Cálculo: velocidade tangencial máxima da ponta da linha = amplitude_angular * gangSpeed * halfLen
-        // (derivada da posição da extremidade). valor ~ 0.44 * 1.85 * 240 ≈ 195 pixels/s.
-        // Usaremos velocidade constante do hexágono = 195 pixels/s para estar na mesma ordem,
-        // percorrendo a linha de ponta a ponta (480 pixels) em ~2.46 segundos.
-        // Isso cria um movimento uniforme (ida e volta) que visualmente está sobre a linha.
-        // Como o hexágono está ACIMA, a percepção é de que ele percorre a linha sem nunca estar dentro.
-        // 
-        // Para garantir "não passar dela": limitamos o movimento entre -halfLen e +halfLen.
-        // E a velocidade é constante no referencial da linha.
+        const maxTipSpeed = tiltAmplitude * angularSpeed * halfLen;   // ≈ 195.36 px/s
+        const hexLinearSpeed = maxTipSpeed;   // velocidade constante do hexágono sobre a linha (px/s)
         
-        // Velocidade constante de deslocamento do hexágono AO LONGO da linha (pixels/segundo)
-        // Calculada com base na velocidade característica da gangorra (velocidade máxima das pontas)
-        const maxTipSpeed = amplitudeAngle * gangSpeed * halfLen;  // ≈ 0.44 * 1.85 * 240 ≈ 195.36
-        const hexTravelSpeed = maxTipSpeed;   // velocidade constante compatível
+        // Estado do movimento uniforme (ping-pong entre as extremidades)
+        let posAlongLine = -halfLen;      // começa na extremidade ESQUERDA (ou direita visual)
+        let movingForward = true;          // true = indo para direita (+S), false = indo para esquerda (-S)
         
-        // Posição atual do hexágono ao longo da linha (parâmetro s entre -halfLen e +halfLen)
-        let currentS = -halfLen;      // começa na extremidade esquerda (ou direita)
-        let movingRight = true;        // direção do movimento
-        
-        // Tempo para animação contínua e sincronização de fase (opcional)
-        let lastTimestamp = 0;
+        // ========== CONTROLE DE TEMPO ==========
+        let lastTimestamp = null;
         let globalTime = 0;
+        let animationId = null;
         
-        // ========== FUNÇÕES GEOMÉTRICAS ==========
+        // Estado da gangorra (ângulo instantâneo)
+        let currentTiltAngle = 0;
+        // Rotação própria do hexágono (acumulativa)
+        let hexSpinAngle = 0;
         
-        // Desenha a linha reta (branca) - gangorra
-        function drawLine(angleRad) {
-            const cosAng = Math.cos(angleRad);
-            const sinAng = Math.sin(angleRad);
-            const dx = halfLen * cosAng;
-            const dy = halfLen * sinAng;
+        // ========== FUNÇÕES GEOMÉTRICAS PRECISAS ==========
+        
+        /**
+         * Desenha a linha principal (gangorra) com estilo clean e espessura visível
+         * @param {number} angleRad - ângulo de inclinação da linha (radianos)
+         */
+        function drawGangorraLine(angleRad) {
+            const cosA = Math.cos(angleRad);
+            const sinA = Math.sin(angleRad);
+            const dx = halfLen * cosA;
+            const dy = halfLen * sinA;
             
-            const x1 = centerX - dx;
-            const y1 = centerY - dy;
-            const x2 = centerX + dx;
-            const y2 = centerY + dy;
+            const x1 = pivotX - dx;
+            const y1 = pivotY - dy;
+            const x2 = pivotX + dx;
+            const y2 = pivotY + dy;
             
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
             ctx.strokeStyle = '#FFFFFF';
-            ctx.lineWidth = 3.0;
+            ctx.lineWidth = 3.2;
+            ctx.shadowBlur = 0;
             ctx.stroke();
+            
+            // Pequeno detalhe sutil: pontos nas extremidades para referência visual
+            ctx.beginPath();
+            ctx.arc(x1, y1, 2.5, 0, Math.PI * 2);
+            ctx.fillStyle = '#aaaaaa';
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x2, y2, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            // ponto central (pivô) sutil
+            ctx.beginPath();
+            ctx.arc(pivotX, pivotY, 2.2, 0, Math.PI * 2);
+            ctx.fillStyle = '#cccccc';
+            ctx.fill();
         }
         
-        // Obtém um ponto sobre a linha dado o parâmetro s (distância do centro)
+        /**
+         * Retorna as coordenadas de um ponto sobre a linha com base no parâmetro s
+         * s varia de -halfLen (extremidade "esquerda" referencial) a +halfLen (extremidade direita)
+         * @param {number} s - distância orientada a partir do centro
+         * @param {number} angleRad - inclinação atual da linha
+         */
         function getPointOnLine(s, angleRad) {
             const dirX = Math.cos(angleRad);
             const dirY = Math.sin(angleRad);
             return {
-                x: centerX + s * dirX,
-                y: centerY + s * dirY
+                x: pivotX + s * dirX,
+                y: pivotY + s * dirY
             };
         }
         
-        // Obtém a posição ACIMA da linha (deslocamento perpendicular)
-        // Vetor perpendicular horário ou anti-horário? Para ficar visualmente "acima"
-        // (lado de fora da oscilação), usamos a normal que aponta para Y negativo quando a linha está horizontal.
-        // Com linha horizontal (angle=0), a normal (-sin, cos) = (0,1) aponta para baixo.
-        // Queremos acima (Y menor). Então usamos a normal oposta: (sin, -cos)
-        function getPositionAboveLine(basePoint, angleRad, offset) {
-            // Vetor perpendicular que aponta para o lado "acima" (visualmente para cima da tela quando horizontal)
-            // Para angle=0: normal (0, -1) aponta para cima (Y negativo)
+        /**
+         * Calcula a posição perpendicular à linha, deslocada pelo offset "acima".
+         * Definição de "acima": visualmente para o lado que fica na parte superior da tela
+         * quando a linha está horizontal (ângulo 0). Usamos a normal (sin, -cos) que aponta
+         * para cima (Y negativo) na horizontal. Isso mantém o hexágono sempre sobre a linha
+         * e não dentro dela, sem contato, garantindo o efeito "acima da linha".
+         * @param {object} basePoint - ponto base sobre a linha
+         * @param {number} angleRad - inclinação
+         * @param {number} offset - distância perpendicular
+         */
+        function getAbovePoint(basePoint, angleRad, offset) {
+            // Vetor normal unitário que aponta para o lado "acima" (lado externo elegante)
+            // Para angle = 0: normal = (0, -1) -> aponta para cima (Y menor)
+            // Para ângulos positivos, a normal rotaciona de forma consistente, mantendo o hexágono
+            // sempre na região que visualmente corresponde ao lado de cima em relação à orientação.
             const normX = Math.sin(angleRad);
             const normY = -Math.cos(angleRad);
             return {
@@ -186,118 +210,166 @@
             };
         }
         
-        // Desenha hexágono com rotação própria + paralelo à linha
-        function drawHexagonAt(cx, cy, radius, baseAngle, selfRotation) {
-            const totalRotation = baseAngle + selfRotation;
-            ctx.beginPath();
+        /**
+         * Desenha hexágono regular preenchido com rotação própria + orientação da linha
+         * @param {number} cx - centro X
+         * @param {number} cy - centro Y
+         * @param {number} radius - raio circunscrito
+         * @param {number} lineAngle - ângulo da linha (para alinhar orientação base)
+         * @param {number} selfRot - rotação adicional independente (spin)
+         */
+        function drawHexagon(cx, cy, radius, lineAngle, selfRot) {
+            // Orientação total: o hexágono fica naturalmente "paralelo" à linha
+            // somamos a rotação própria para efeito visual de giro contínuo.
+            const totalRotation = lineAngle + selfRot;
             const sides = 6;
+            ctx.beginPath();
             for (let i = 0; i < sides; i++) {
-                const angle = (i * Math.PI * 2 / sides) + totalRotation;
-                const x = cx + radius * Math.cos(angle);
-                const y = cy + radius * Math.sin(angle);
+                const angleStep = (i * Math.PI * 2 / sides) + totalRotation;
+                const x = cx + radius * Math.cos(angleStep);
+                const y = cy + radius * Math.sin(angleStep);
                 if (i === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             }
             ctx.closePath();
             ctx.fillStyle = '#FFFFFF';
+            ctx.shadowBlur = 0;
             ctx.fill();
+            // Leve contorno para dar definição (opcional, mas fica clean)
+            ctx.strokeStyle = '#222222';
+            ctx.lineWidth = 0.8;
+            ctx.stroke();
         }
         
-        // Atualiza o movimento uniforme do hexágono ao longo da linha
-        // Ele percorre de -halfLen até +halfLen com velocidade constante,
-        // inverte a direção ao atingir os extremos.
-        function updateUniformPosition(deltaTime) {
-            if (deltaTime <= 0 || deltaTime > 0.05) deltaTime = 0.016;
+        /**
+         * Atualiza a posição do hexágono sobre a linha com velocidade CONSTANTE (uniforme)
+         * Implementa movimento de vai-e-vem (ping-pong) entre as extremidades.
+         * A velocidade escalar (hexLinearSpeed) é fixa em pixels/segundo.
+         * Esta função garante que o hexágono percorre TODA a linha uniformemente,
+         * sem qualquer aceleração ou variação na velocidade de percurso.
+         */
+        function updateUniformLinearMotion(deltaSec) {
+            if (deltaSec <= 0 || deltaSec > 0.05) deltaSec = 0.016; // fallback seguro
             
-            const step = hexTravelSpeed * deltaTime;
+            // deslocamento absoluto nesta iteração
+            const step = hexLinearSpeed * deltaSec;
             
-            if (movingRight) {
-                currentS += step;
-                if (currentS >= halfLen) {
-                    currentS = halfLen;
-                    movingRight = false;
+            if (movingForward) {
+                posAlongLine += step;
+                if (posAlongLine >= halfLen) {
+                    posAlongLine = halfLen;
+                    movingForward = false;
                 }
             } else {
-                currentS -= step;
-                if (currentS <= -halfLen) {
-                    currentS = -halfLen;
-                    movingRight = true;
+                posAlongLine -= step;
+                if (posAlongLine <= -halfLen) {
+                    posAlongLine = -halfLen;
+                    movingForward = true;
                 }
             }
             
-            // Garantia numérica de limites
-            currentS = Math.max(-halfLen, Math.min(halfLen, currentS));
+            // clamp duplo para evitar erros de floating point
+            posAlongLine = Math.min(halfLen, Math.max(-halfLen, posAlongLine));
         }
         
-        // ========== LOOP PRINCIPAL ==========
-        let startTime = null;
-        let animFrameId = null;
-        let lastFrameTime = 0;
-        let currentAngle = 0;
-        let hexSelfRotation = 0;
-        
-        function renderFrame(nowMs) {
-            if (!startTime) {
-                startTime = nowMs;
-                lastFrameTime = nowMs;
+        /**
+         * Função principal de animação (loop baseado em requestAnimationFrame)
+         * Atualiza tempo, ângulo da gangorra, movimento uniforme, rotação própria,
+         * recalcula posição do hexágono acima da linha e renderiza.
+         */
+        function animationLoop(nowMs) {
+            if (!lastTimestamp) {
+                lastTimestamp = nowMs;
                 globalTime = 0;
-                requestAnimationFrame(renderFrame);
+                requestAnimationFrame(animationLoop);
                 return;
             }
             
-            // Tempo global decorrido (segundos)
-            globalTime = (nowMs - startTime) / 1000;
+            // Cálculo do delta time seguro (segundos)
+            let delta = Math.min(0.033, (nowMs - lastTimestamp) / 1000);
+            if (delta <= 0) delta = 0.016;
+            lastTimestamp = nowMs;
             
-            // Delta time para movimento contínuo do hexágono
-            let deltaSec = (nowMs - lastFrameTime) / 1000;
-            if (deltaSec > 0.033) deltaSec = 0.033;
-            if (deltaSec <= 0) deltaSec = 0.016;
-            lastFrameTime = nowMs;
+            // Tempo global para animações contínuas (oscilação e rotação)
+            globalTime += delta;
             
-            // 1. Atualiza ângulo da gangorra (oscilação)
-            currentAngle = amplitudeAngle * Math.sin(gangSpeed * globalTime);
+            // 1. ATUALIZA INCLINAÇÃO DA GANGORRA (movimento oscilatório harmônico puro)
+            currentTiltAngle = tiltAmplitude * Math.sin(angularSpeed * globalTime);
             
-            // 2. Atualiza posição do hexágono ao longo da linha (movimento uniforme constante)
-            updateUniformPosition(deltaSec);
+            // 2. MOVIMENTO UNIFORME DO HEXÁGONO SOBRE A LINHA (VELOCIDADE CONSTANTE)
+            //    Percorre toda a extensão de -halfLen até +halfLen e vice-versa, sem aceleração.
+            updateUniformLinearMotion(delta);
             
-            // 3. Atualiza rotação própria do hexágono (gira continuamente)
-            hexSelfRotation = hexSpinSpeed * globalTime;
+            // 3. ROTAÇÃO PRÓPRIA DO HEXÁGONO (gira continuamente independente da posição)
+            hexSpinAngle = hexSpinRate * globalTime;
             
-            // 4. Obtém ponto base na linha conforme posição atual S
-            const basePoint = getPointOnLine(currentS, currentAngle);
+            // 4. OBTÉM PONTO BASE NA LINHA conforme a posição atual (posAlongLine)
+            const basePt = getPointOnLine(posAlongLine, currentTiltAngle);
             
-            // 5. Calcula posição ACIMA da linha (offset perpendicular)
-            const hexPos = getPositionAboveLine(basePoint, currentAngle, aboveOffset);
+            // 5. POSIÇÃO FINAL DO HEXÁGONO: aplica o offset perpendicular "acima da linha"
+            const hexagonCenter = getAbovePoint(basePt, currentTiltAngle, perpendicularOffset);
             
-            // 6. Desenhar tudo
+            // 6. RENDERIZAÇÃO COMPLETA
             ctx.clearRect(0, 0, W, H);
+            // Fundo preto absoluto
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, W, H);
             
-            // Linha branca (gangorra)
-            drawLine(currentAngle);
+            // Desenha a linha branca (gangorra) com detalhes nos extremos
+            drawGangorraLine(currentTiltAngle);
             
-            // Hexágono branco acima da linha, paralelo, girando
-            drawHexagonAt(hexPos.x, hexPos.y, hexSize, currentAngle, hexSelfRotation);
+            // Desenha o hexágono acima, com rotação própria + paralelismo à linha
+            drawHexagon(hexagonCenter.x, hexagonCenter.y, hexRadius, currentTiltAngle, hexSpinAngle);
             
-            // Nenhum elemento adicional, sem efeitos, sem corda, sem nós.
+            // (Opcional) pequeno ponto de referência sobre o trilho? não, mantém clean.
+            // Nenhum elemento extra, apenas hexágono e linha.
             
-            animFrameId = requestAnimationFrame(renderFrame);
+            // continua o loop
+            animationId = requestAnimationFrame(animationLoop);
         }
         
-        // Iniciar animação
-        animFrameId = requestAnimationFrame(renderFrame);
+        // ========== INICIALIZAÇÃO E SEGURANÇA ==========
+        function startAnimation() {
+            if (animationId) cancelAnimationFrame(animationId);
+            lastTimestamp = null;
+            globalTime = 0;
+            posAlongLine = -halfLen;        // inicia na extremidade esquerda
+            movingForward = true;            // movimento inicial para a direita
+            currentTiltAngle = 0;
+            hexSpinAngle = 0;
+            animationId = requestAnimationFrame(animationLoop);
+        }
         
-        // Prevenir interações
+        startAnimation();
+        
+        // Previne interações indesejadas
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
         canvas.addEventListener('selectstart', (e) => e.preventDefault());
         
-        // Cleanup
+        // Garantir que a animação não acumule múltiplos loops em situações de visibilidade
         window.addEventListener('beforeunload', () => {
-            if (animFrameId) cancelAnimationFrame(animFrameId);
+            if (animationId) cancelAnimationFrame(animationId);
         });
         
-        console.log('✓ Hexágono acima da linha | percorre toda extensão uniformemente | velocidade sincronizada com a gangorra');
+        // Log de validação das propriedades (console)
+        console.log('🚀 Hexágono com movimento UNIFORME sobre a linha | Velocidade constante:', hexLinearSpeed.toFixed(2), 'px/s');
+        console.log('   Extensão da linha:', lineLength, 'px | halfLen:', halfLen);
+        console.log('   Offset perpendicular acima da linha:', perpendicularOffset, 'px');
+        console.log('   Velocidade angular da gangorra:', angularSpeed, 'rad/s | amplitude:', tiltAmplitude, 'rad');
+        console.log('   Período de ida/volta completa do hexágono:', (2 * lineLength / hexLinearSpeed).toFixed(2), 's');
+        console.log('   Sincronia: movimento uniforme garantido | velocidade baseada em maxTipSpeed');
+        
+        // Adicional: para fins de demonstração, não há aceleração ou desaceleração.
+        // O hexágono percorre de forma perfeitamente linear sobre o eixo da linha.
+        
+        // Caso necessário: redesenho se houver mudança de tamanho (não aplicável)
+        window.addEventListener('resize', () => {
+            // canvas tem tamanho fixo, apenas prevenção
+            canvas.style.width = '1000px';
+            canvas.style.height = '500px';
+        });
+        
+        // Script final: hexágono acima, sem contato com a linha, percurso uniforme absoluto
     })();
 </script>
 </body>
